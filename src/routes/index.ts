@@ -4,7 +4,7 @@ import fileRoutes from "./file.routes.js";
 import storageRoutes from "./storage.routes.js";
 import uploadRoutes from "./upload.routes.js";
 
-const router = Router();
+const router: Router = Router();
 
 router.get("/health", healthCheck);
 router.use("/uploads", uploadRoutes);

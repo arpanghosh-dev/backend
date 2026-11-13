@@ -26,3 +26,7 @@ export const downloadUrlSchema = {
       .transform((value) => value === "true"),
   }),
 };
+
+export type FileIdParams = z.infer<typeof fileIdParamSchema.params>;
+export type ListFilesQuery = z.infer<typeof listFilesSchema.query>;
+export type DownloadUrlQuery = z.infer<typeof downloadUrlSchema.query>;

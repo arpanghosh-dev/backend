@@ -1,7 +1,10 @@
+import type { Request, Response } from "express";
 import { prisma } from "../config/database.js";
 
-export const healthCheck = async (_req, res) => {
-  let database = "up";
+type ServiceState = "up" | "down";
+
+export const healthCheck = async (_req: Request, res: Response): Promise<void> => {
+  let database: ServiceState = "up";
   try {
     await prisma.$queryRaw`SELECT 1`;
   } catch {
@@ -10,7 +13,7 @@ export const healthCheck = async (_req, res) => {
 
   const healthy = database === "up";
 
-  return res.status(healthy ? 200 : 503).json({
+  res.status(healthy ? 200 : 503).json({
     success: healthy,
     message: healthy ? "API is healthy" : "API is degraded",
     data: {

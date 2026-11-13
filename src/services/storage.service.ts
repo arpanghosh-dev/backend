@@ -1,14 +1,14 @@
-import { Prisma } from "@prisma/client";
-import { prisma } from "../config/database.js";
+import { Prisma, type StorageConfig } from "@prisma/client";
+import { prisma, type DbClient } from "../config/database.js";
 import { env } from "../config/env.js";
 import { AppError } from "../utils/app-error.js";
-import { buildStorageStats, formatBytes, gbToBytes } from "../utils/storage-calculator.js";
+import { buildStorageStats, formatBytes, gbToBytes, type ByteValue, type StorageStats } from "../utils/storage-calculator.js";
 
 // The app keeps a single storage configuration row with a fixed id.
 export const STORAGE_CONFIG_ID = "00000000-0000-0000-0000-000000000001";
 
 /** Fetch the storage config row, creating it on first use. */
-export const getOrCreateStorageConfig = async (db = prisma) => {
+export const getOrCreateStorageConfig = async (db: DbClient = prisma): Promise<StorageConfig> => {
   const existing = await db.storageConfig.findUnique({ where: { id: STORAGE_CONFIG_ID } });
   if (existing) return existing;
 
@@ -29,7 +29,7 @@ export const getOrCreateStorageConfig = async (db = prisma) => {
  * Atomically reserve space. The WHERE clause makes the capacity check and the
  * increment a single statement, so concurrent uploads can never over-commit.
  */
-export const reserveStorage = async (db, size) => {
+export const reserveStorage = async (db: DbClient, size: ByteValue): Promise<void> => {
   const bytes = BigInt(size);
   const updated = await db.$executeRaw`
     UPDATE storage_configs
@@ -51,7 +51,7 @@ export const reserveStorage = async (db, size) => {
 };
 
 /** Give back reserved space (upload expired, failed or was rejected). */
-export const releaseReservedStorage = async (db, size) => {
+export const releaseReservedStorage = async (db: DbClient, size: ByteValue): Promise<void> => {
   const bytes = BigInt(size);
   await db.$executeRaw`
     UPDATE storage_configs
@@ -62,7 +62,7 @@ export const releaseReservedStorage = async (db, size) => {
 };
 
 /** Move space from "reserved" to "used" once an upload is verified. */
-export const commitReservedStorage = async (db, size) => {
+export const commitReservedStorage = async (db: DbClient, size: ByteValue): Promise<void> => {
   const bytes = BigInt(size);
   await db.$executeRaw`
     UPDATE storage_configs
@@ -74,7 +74,7 @@ export const commitReservedStorage = async (db, size) => {
 };
 
 /** Free used space after a file is deleted. */
-export const releaseUsedStorage = async (db, size) => {
+export const releaseUsedStorage = async (db: DbClient, size: ByteValue): Promise<void> => {
   const bytes = BigInt(size);
   await db.$executeRaw`
     UPDATE storage_configs
@@ -84,7 +84,7 @@ export const releaseUsedStorage = async (db, size) => {
   `;
 };
 
-export const getStorageStats = async () => {
+export const getStorageStats = async (): Promise<StorageStats> => {
   await getOrCreateStorageConfig();
 
   const [config, fileCount, pendingUploads] = await Promise.all([
@@ -96,7 +96,7 @@ export const getStorageStats = async () => {
   return buildStorageStats(config, { fileCount, pendingUploads });
 };
 
-export const updateStorageLimit = async (newLimitBytes) => {
+export const updateStorageLimit = async (newLimitBytes: ByteValue): Promise<StorageStats> => {
   await getOrCreateStorageConfig();
   const limit = BigInt(newLimitBytes);
 

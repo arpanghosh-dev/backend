@@ -1,0 +1,7 @@
+{
+  "watch": ["src"],
+  "ext": "ts,json",
+  "ignore": ["src/**/*.test.ts"],
+  "exec": "tsc --noEmit && tsx src/server.ts",
+  "delay": 300
+}

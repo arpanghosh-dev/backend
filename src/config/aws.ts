@@ -18,4 +18,4 @@ export const awsConfig = {
   bucket: env.AWS_BUCKET_NAME,
   uploadUrlExpiresIn: env.UPLOAD_URL_EXPIRES_SECONDS,
   downloadUrlExpiresIn: env.DOWNLOAD_URL_EXPIRES_SECONDS,
-};
+} as const;

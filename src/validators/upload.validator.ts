@@ -34,3 +34,6 @@ export const completeUploadSchema = {
     uploadSessionId: z.uuid({ error: "uploadSessionId must be a valid UUID" }),
   }),
 };
+
+export type PresignedUrlBody = z.infer<typeof presignedUrlSchema.body>;
+export type CompleteUploadBody = z.infer<typeof completeUploadSchema.body>;

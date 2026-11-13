@@ -1,6 +1,6 @@
 # File Storage Backend
 
-Express 5 + Prisma (PostgreSQL) API for uploading files directly to Amazon S3 using presigned URLs, with a global storage limit.
+TypeScript + Express 5 + Prisma (PostgreSQL) API for uploading files directly to Amazon S3 using presigned URLs, with a global storage limit.
 
 ## Setup
 
@@ -8,8 +8,19 @@ Express 5 + Prisma (PostgreSQL) API for uploading files directly to Amazon S3 us
 npm install                # also runs `prisma generate`
 cp .env.example .env       # then fill in the values
 npm run prisma:migrate     # apply migrations to your database
-npm run dev                # or: npm start
+npm run dev
 ```
+
+## Scripts
+
+| Script              | What it does                                                                 |
+| ------------------- | ---------------------------------------------------------------------------- |
+| `npm run dev`       | Watches `src/`. On every start/restart runs `tsc --noEmit` first; the server only starts if type checking passes (see `nodemon.json`). |
+| `npm run typecheck` | Type-check only, no output files                                             |
+| `npm run build`     | Clean `dist/` and compile TypeScript to JavaScript                           |
+| `npm start`         | Builds (via `prestart`), then runs `node dist/server.js`                     |
+
+Imports inside `src/` use `.js` extensions (e.g. `./config/env.js`) — this is required for Node ESM with `"module": "NodeNext"`; TypeScript resolves them to the `.ts` files.
 
 - API: `http://localhost:5000/api`
 - Swagger UI: `http://localhost:5000/api/docs`
@@ -95,6 +106,7 @@ src/
 ├── validators/    Zod schemas
 ├── utils/         S3 keys, byte math, serializers, errors
 ├── docs/          OpenAPI (Swagger) spec
-├── app.js         Express app
-└── server.js      entry point, startup and shutdown
+├── types/         Express type augmentation (req.validated)
+├── app.ts         Express app
+└── server.ts      entry point, startup and shutdown
 ```

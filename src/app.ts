@@ -1,5 +1,5 @@
 import cors from "cors";
-import express from "express";
+import express, { type Express } from "express";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 import swaggerUi from "swagger-ui-express";
@@ -8,13 +8,15 @@ import { swaggerSpec } from "./docs/swagger.js";
 import { errorHandler, notFoundHandler } from "./middlewares/error.middleware.js";
 import apiRoutes from "./routes/index.js";
 
-const app = express();
+const app: Express = express();
 
 app.disable("x-powered-by");
 app.set("trust proxy", 1);
 
 // API docs are mounted before helmet so its Content-Security-Policy doesn't block the Swagger UI assets.
-app.get("/api/docs.json", (_req, res) => res.json(swaggerSpec));
+app.get("/api/docs.json", (_req, res) => {
+  res.json(swaggerSpec);
+});
 app.use(
   "/api/docs",
   swaggerUi.serve,

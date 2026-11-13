@@ -13,3 +13,5 @@ export const updateStorageLimitSchema = {
       message: "Provide exactly one of limitGB or limitBytes",
     }),
 };
+
+export type UpdateStorageLimitBody = z.infer<typeof updateStorageLimitSchema.body>;

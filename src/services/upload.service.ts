@@ -1,8 +1,10 @@
-import { prisma } from "../config/database.js";
+import type { UploadSession, UploadStatus } from "@prisma/client";
 import { awsConfig } from "../config/aws.js";
+import { prisma } from "../config/database.js";
 import { AppError } from "../utils/app-error.js";
 import { generateS3Key, getExtension } from "../utils/generate-s3-key.js";
-import { serializeFile } from "../utils/serializers.js";
+import { serializeFile, type FileDto } from "../utils/serializers.js";
+import type { CompleteUploadBody, PresignedUrlBody } from "../validators/upload.validator.js";
 import { createPresignedUploadUrl, getObjectMetadata, safeDeleteObject } from "./s3.service.js";
 import {
   commitReservedStorage,
@@ -15,10 +17,26 @@ import {
 // (an upload that started just before the URL expired may still be in flight).
 const COMPLETION_GRACE_SECONDS = 600;
 
+export interface UploadSessionDto {
+  uploadSessionId: string;
+  fileId: string;
+  uploadUrl: string;
+  method: "PUT";
+  headers: { "Content-Type": string };
+  s3Key: string;
+  expiresIn: number;
+  expiresAt: Date;
+  completeBefore: Date;
+}
+
 /**
  * Step 1: reserve space, create PENDING records and return a presigned PUT URL.
  */
-export const createUploadSession = async ({ fileName, mimeType, fileSize }) => {
+export const createUploadSession = async ({
+  fileName,
+  mimeType,
+  fileSize,
+}: PresignedUrlBody): Promise<UploadSessionDto> => {
   await getOrCreateStorageConfig();
 
   const { key, fileName: safeFileName } = generateS3Key(fileName);
@@ -55,7 +73,7 @@ export const createUploadSession = async ({ fileName, mimeType, fileSize }) => {
     return { file, session };
   });
 
-  let uploadUrl;
+  let uploadUrl: string;
   try {
     uploadUrl = await createPresignedUploadUrl({ key, mimeType, fileSize });
   } catch (error) {
@@ -80,7 +98,10 @@ export const createUploadSession = async ({ fileName, mimeType, fileSize }) => {
  * Mark a PENDING session as FAILED/EXPIRED, release its reservation and remove any
  * partially uploaded object. Safe to call concurrently: only one caller wins.
  */
-export const failUploadSession = async (sessionId, status = "FAILED") => {
+export const failUploadSession = async (
+  sessionId: string,
+  status: Extract<UploadStatus, "FAILED" | "EXPIRED"> = "FAILED",
+): Promise<UploadSession | null> => {
   const session = await prisma.$transaction(async (tx) => {
     const { count } = await tx.uploadSession.updateMany({
       where: { id: sessionId, status: "PENDING" },
@@ -104,7 +125,7 @@ export const failUploadSession = async (sessionId, status = "FAILED") => {
  * Step 2: verify the object exists in S3 with the expected size, then mark the
  * file COMPLETED and move the reserved bytes to used storage.
  */
-export const completeUpload = async ({ uploadSessionId }) => {
+export const completeUpload = async ({ uploadSessionId }: CompleteUploadBody): Promise<FileDto> => {
   const session = await prisma.uploadSession.findUnique({
     where: { id: uploadSessionId },
     include: { file: true },
@@ -114,18 +135,17 @@ export const completeUpload = async ({ uploadSessionId }) => {
     throw AppError.notFound("Upload session not found", "UPLOAD_SESSION_NOT_FOUND");
   }
 
-  if (session.status === "COMPLETED") {
-    throw AppError.conflict("This upload has already been completed", "UPLOAD_ALREADY_COMPLETED", {
-      fileId: session.fileId,
-    });
-  }
-
-  if (session.status === "EXPIRED") {
-    throw AppError.gone("This upload session has expired. Request a new upload URL.", "UPLOAD_SESSION_EXPIRED");
-  }
-
-  if (session.status === "FAILED") {
-    throw AppError.badRequest("This upload session has failed. Request a new upload URL.", "UPLOAD_SESSION_FAILED");
+  switch (session.status) {
+    case "COMPLETED":
+      throw AppError.conflict("This upload has already been completed", "UPLOAD_ALREADY_COMPLETED", {
+        fileId: session.fileId,
+      });
+    case "EXPIRED":
+      throw AppError.gone("This upload session has expired. Request a new upload URL.", "UPLOAD_SESSION_EXPIRED");
+    case "FAILED":
+      throw AppError.badRequest("This upload session has failed. Request a new upload URL.", "UPLOAD_SESSION_FAILED");
+    case "PENDING":
+      break;
   }
 
   if (session.expiresAt.getTime() < Date.now()) {
@@ -174,7 +194,7 @@ export const completeUpload = async ({ uploadSessionId }) => {
 };
 
 /** Expire stale PENDING sessions and free their reserved space. */
-export const cleanupExpiredUploadSessions = async (batchSize = 100) => {
+export const cleanupExpiredUploadSessions = async (batchSize = 100): Promise<number> => {
   const expired = await prisma.uploadSession.findMany({
     where: { status: "PENDING", expiresAt: { lt: new Date() } },
     select: { id: true },
@@ -186,7 +206,7 @@ export const cleanupExpiredUploadSessions = async (batchSize = 100) => {
     try {
       if (await failUploadSession(id, "EXPIRED")) cleaned += 1;
     } catch (error) {
-      console.error(`[cleanup] Failed to expire upload session ${id}:`, error.message);
+      console.error(`[cleanup] Failed to expire upload session ${id}:`, error instanceof Error ? error.message : error);
     }
   }
   return cleaned;

@@ -1,4 +1,7 @@
+import type { JsonObject } from "swagger-ui-express";
 import { env } from "../config/env.js";
+
+type Schema = Record<string, unknown>;
 
 const uuidParam = {
   name: "id",
@@ -9,7 +12,7 @@ const uuidParam = {
   example: "3f1c6a2e-8a51-4b7e-9d0a-6f6a1b2c3d4e",
 };
 
-const errorResponse = (description, code, message) => ({
+const errorResponse = (description: string, code: string, message: string): Schema => ({
   description,
   content: {
     "application/json": {
@@ -36,7 +39,7 @@ const validationError = {
   },
 };
 
-const successEnvelope = (dataSchema, extra = {}) => ({
+const successEnvelope = (dataSchema: Schema, extra: Schema = {}): Schema => ({
   type: "object",
   properties: {
     success: { type: "boolean", example: true },
@@ -46,7 +49,7 @@ const successEnvelope = (dataSchema, extra = {}) => ({
   },
 });
 
-export const swaggerSpec = {
+export const swaggerSpec: JsonObject = {
   openapi: "3.0.3",
   info: {
     title: "File Storage API",

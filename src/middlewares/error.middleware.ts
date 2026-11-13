@@ -1,20 +1,46 @@
 import { Prisma } from "@prisma/client";
+import type { ErrorRequestHandler, RequestHandler } from "express";
 import { isProduction } from "../config/env.js";
 import { AppError } from "../utils/app-error.js";
 
-export const notFoundHandler = (req, _res, next) => {
+interface ErrorBody {
+  success: false;
+  error: {
+    code: string;
+    message: string;
+    details?: unknown;
+    stack?: string;
+  };
+}
+
+/** Shape of errors thrown by body-parser (express.json). */
+interface BodyParserError extends Error {
+  type?: string;
+}
+
+/** Shape of errors thrown by the AWS SDK v3. */
+interface AwsSdkError extends Error {
+  $metadata?: { httpStatusCode?: number };
+}
+
+const isAwsError = (err: unknown): err is AwsSdkError & { $metadata: { httpStatusCode: number } } =>
+  err instanceof Error && typeof (err as AwsSdkError).$metadata?.httpStatusCode === "number";
+
+export const notFoundHandler: RequestHandler = (req, _res, next) => {
   next(AppError.notFound(`Route ${req.method} ${req.originalUrl} not found`, "ROUTE_NOT_FOUND"));
 };
 
-const normalizeError = (err) => {
+const normalizeError = (err: unknown): AppError => {
   if (err instanceof AppError) return err;
 
+  const parserType = (err as BodyParserError | undefined)?.type;
+
   // Malformed JSON body
-  if (err?.type === "entity.parse.failed") {
+  if (parserType === "entity.parse.failed") {
     return AppError.badRequest("Request body contains invalid JSON", "INVALID_JSON");
   }
 
-  if (err?.type === "entity.too.large") {
+  if (parserType === "entity.too.large") {
     return AppError.payloadTooLarge("Request body is too large", "BODY_TOO_LARGE");
   }
 
@@ -35,8 +61,7 @@ const normalizeError = (err) => {
     return new AppError("Database is unavailable", 503, "DATABASE_UNAVAILABLE");
   }
 
-  // AWS SDK errors
-  if (err?.$metadata?.httpStatusCode) {
+  if (isAwsError(err)) {
     const status = err.$metadata.httpStatusCode;
     if (status === 301 || err.name === "PermanentRedirect") {
       return new AppError(
@@ -60,16 +85,15 @@ const normalizeError = (err) => {
   return new AppError("Internal server error", 500, "INTERNAL_ERROR");
 };
 
-// Express identifies error handlers by their 4-argument signature.
-// eslint-disable-next-line no-unused-vars
-export const errorHandler = (err, req, res, _next) => {
+// Express identifies error handlers by their 4-argument signature, so `_next` must stay.
+export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
   const error = normalizeError(err);
 
   if (error.statusCode >= 500) {
     console.error(`[error] ${req.method} ${req.originalUrl}`, err);
   }
 
-  const body = {
+  const body: ErrorBody = {
     success: false,
     error: {
       code: error.code,
@@ -78,7 +102,7 @@ export const errorHandler = (err, req, res, _next) => {
     },
   };
 
-  if (!isProduction && error.statusCode >= 500 && err?.stack) {
+  if (!isProduction && error.statusCode >= 500 && err instanceof Error && err.stack) {
     body.error.stack = err.stack;
   }
 

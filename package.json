@@ -1,15 +1,24 @@
 {
-  "name": "backend",
+  "name": "file-storage-backend",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "File storage API with S3 presigned uploads, PostgreSQL (Prisma) and storage limits",
+  "main": "src/server.js",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:deploy": "prisma migrate deploy",
+    "prisma:studio": "prisma studio",
+    "postinstall": "prisma generate"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1168.0",
     "@aws-sdk/s3-request-presigner": "^3.1168.0",

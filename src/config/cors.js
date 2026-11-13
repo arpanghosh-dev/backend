@@ -1,39 +1,20 @@
-const cors = require("cors");
+import { env } from "./env.js";
 
-const allowedOrigins = [
-  "http://localhost:3000",
-  "http://localhost:5173",
-  process.env.FRONTEND_URL
-].filter(Boolean);
+// FRONTEND_URL may hold a comma-separated list of allowed origins.
+const allowedOrigins = env.FRONTEND_URL.split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 
-const corsOptions = {
-  origin: (origin, callback) => {
+export const corsOptions = {
+  origin(origin, callback) {
+    // Allow non-browser clients (curl, Postman, server-to-server) and same-origin requests.
     if (!origin || allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
-
-    return callback(
-      new Error("Origin not allowed by CORS")
-    );
+    return callback(null, false);
   },
-
-  methods: [
-    "GET",
-    "POST",
-    "PUT",
-    "DELETE",
-    "OPTIONS"
-  ],
-
-  allowedHeaders: [
-    "Content-Type",
-    "Authorization",
-    "X-API-Key"
-  ],
-
-  credentials: false,
-
-  maxAge: 86400
+  methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: true,
+  maxAge: 86400,
 };
-
-module.exports = cors(corsOptions);

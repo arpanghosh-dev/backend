@@ -1,62 +1,70 @@
-const {
-  PutObjectCommand,
+import {
+  DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
-  DeleteObjectCommand
-} = require("@aws-sdk/client-s3");
+  PutObjectCommand,
+} from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { awsConfig, s3Client } from "../config/aws.js";
 
-const {
-  getSignedUrl
-} = require("@aws-sdk/s3-request-presigner");
+const encodeRFC5987 = (value) =>
+  encodeURIComponent(value).replace(/['()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
 
-const s3 = require("../config/aws");
-
-const BUCKET = process.env.AWS_BUCKET_NAME;
-
-async function generateUploadUrl(key, mimeType) {
+/** Presigned PUT URL. The client must send the same Content-Type header when uploading. */
+export const createPresignedUploadUrl = async ({ key, mimeType, fileSize }) => {
   const command = new PutObjectCommand({
-    Bucket: BUCKET,
+    Bucket: awsConfig.bucket,
     Key: key,
-    ContentType: mimeType
+    ContentType: mimeType,
+    ContentLength: fileSize,
   });
 
-  return getSignedUrl(s3, command, {
-    expiresIn: 300
-  });
-}
+  return getSignedUrl(s3Client, command, { expiresIn: awsConfig.uploadUrlExpiresIn });
+};
 
-async function generateDownloadUrl(key) {
+/** Presigned GET URL that forces a download with the original file name. */
+export const createPresignedDownloadUrl = async ({ key, originalName, inline = false }) => {
+  const asciiName = originalName.replace(/[^\x20-\x7E]/g, "_").replace(/["\\]/g, "_");
+  const disposition = `${inline ? "inline" : "attachment"}; filename="${asciiName}"; filename*=UTF-8''${encodeRFC5987(originalName)}`;
+
   const command = new GetObjectCommand({
-    Bucket: BUCKET,
-    Key: key
+    Bucket: awsConfig.bucket,
+    Key: key,
+    ResponseContentDisposition: disposition,
   });
 
-  return getSignedUrl(s3, command, {
-    expiresIn: 300
-  });
-}
+  return getSignedUrl(s3Client, command, { expiresIn: awsConfig.downloadUrlExpiresIn });
+};
 
-async function getFileMetadata(key) {
-  return s3.send(
-    new HeadObjectCommand({
-      Bucket: BUCKET,
-      Key: key
-    })
-  );
-}
+/** Returns object metadata, or null when the object does not exist. */
+export const getObjectMetadata = async (key) => {
+  try {
+    const result = await s3Client.send(new HeadObjectCommand({ Bucket: awsConfig.bucket, Key: key }));
+    return {
+      contentLength: result.ContentLength ?? 0,
+      contentType: result.ContentType ?? null,
+      etag: result.ETag ? result.ETag.replace(/"/g, "") : null,
+      lastModified: result.LastModified ?? null,
+    };
+  } catch (error) {
+    if (error?.name === "NotFound" || error?.$metadata?.httpStatusCode === 404) {
+      return null;
+    }
+    throw error;
+  }
+};
 
-async function deleteS3File(key) {
-  return s3.send(
-    new DeleteObjectCommand({
-      Bucket: BUCKET,
-      Key: key
-    })
-  );
-}
+export const deleteObject = async (key) => {
+  await s3Client.send(new DeleteObjectCommand({ Bucket: awsConfig.bucket, Key: key }));
+};
 
-module.exports = {
-  generateUploadUrl,
-  generateDownloadUrl,
-  getFileMetadata,
-  deleteS3File
+/** Best-effort delete that never throws (used for cleanup paths). */
+export const safeDeleteObject = async (key) => {
+  try {
+    await deleteObject(key);
+    return true;
+  } catch (error) {
+    console.error(`[s3] Failed to delete object "${key}":`, error.message);
+    return false;
+  }
 };

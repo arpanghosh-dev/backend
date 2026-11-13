@@ -1,0 +1,79 @@
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum FileStatus {
+  PENDING
+  COMPLETED
+  DELETING
+  FAILED
+}
+
+enum UploadStatus {
+  PENDING
+  COMPLETED
+  EXPIRED
+  FAILED
+}
+
+model StorageConfig {
+  id             String   @id @default(uuid()) @db.Uuid
+  totalLimit     BigInt   @default(10737418240) @map("total_limit")
+  usedStorage    BigInt   @default(0) @map("used_storage")
+  reservedStorage BigInt  @default(0) @map("reserved_storage")
+
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("storage_configs")
+}
+
+model File {
+  id           String     @id @default(uuid()) @db.Uuid
+  fileName     String     @map("file_name") @db.VarChar(255)
+  originalName String     @map("original_name") @db.VarChar(255)
+  mimeType     String     @map("mime_type") @db.VarChar(150)
+  fileSize     BigInt     @map("file_size")
+  extension    String?    @db.VarChar(20)
+
+  s3Bucket     String     @map("s3_bucket") @db.VarChar(255)
+  s3Key        String     @unique @map("s3_key") @db.VarChar(1024)
+  etag         String?    @db.VarChar(255)
+
+  status       FileStatus @default(PENDING)
+
+  uploadSessions UploadSession[]
+
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([status, createdAt])
+  @@map("files")
+}
+
+model UploadSession {
+  id           String       @id @default(uuid()) @db.Uuid
+  fileId       String       @map("file_id") @db.Uuid
+  expectedSize BigInt       @map("expected_size")
+
+  s3Key        String       @map("s3_key") @db.VarChar(1024)
+
+  status       UploadStatus @default(PENDING)
+
+  expiresAt    DateTime     @map("expires_at") @db.Timestamptz(6)
+
+  file         File         @relation(fields: [fileId], references: [id], onDelete: Restrict)
+
+  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([fileId])
+  @@index([status, expiresAt])
+  @@map("upload_sessions")
+}

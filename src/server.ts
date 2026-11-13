@@ -2,6 +2,7 @@ import type { Server } from "node:http";
 import app from "./app.js";
 import { connectDatabase, disconnectDatabase } from "./config/database.js";
 import { env } from "./config/env.js";
+import { verifyBucket } from "./services/s3.service.js";
 import { getOrCreateStorageConfig } from "./services/storage.service.js";
 import { cleanupExpiredUploadSessions } from "./services/upload.service.js";
 
@@ -26,6 +27,7 @@ const start = async (): Promise<void> => {
     console.log("✅ Database connected");
 
     await getOrCreateStorageConfig();
+    await verifyBucket();
 
     server = app.listen(env.PORT, () => {
       console.log(`🚀 Server running on http://localhost:${env.PORT} (${env.NODE_ENV})`);

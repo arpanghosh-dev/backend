@@ -1,6 +1,7 @@
 import {
   DeleteObjectCommand,
   GetObjectCommand,
+  HeadBucketCommand,
   HeadObjectCommand,
   PutObjectCommand,
 } from "@aws-sdk/client-s3";
@@ -82,6 +83,38 @@ export const getObjectMetadata = async (key: string): Promise<ObjectMetadata | n
 
 export const deleteObject = async (key: string): Promise<void> => {
   await s3Client.send(new DeleteObjectCommand({ Bucket: awsConfig.bucket, Key: key }));
+};
+
+/**
+ * Startup sanity check: logs a clear message when the configured bucket is missing,
+ * in another region, or the credentials are invalid. Never throws.
+ */
+export const verifyBucket = async (): Promise<void> => {
+  try {
+    await s3Client.send(new HeadBucketCommand({ Bucket: awsConfig.bucket }));
+    console.log(`✅ S3 bucket "${awsConfig.bucket}" reachable (${awsConfig.region})`);
+  } catch (error) {
+    const err = error as Error & { $metadata?: { httpStatusCode?: number }; BucketRegion?: string };
+    const status = err.$metadata?.httpStatusCode;
+    if (status === 404) {
+      console.error(
+        `❌ S3 bucket "${awsConfig.bucket}" does not exist. Check AWS_BUCKET_NAME in .env against the S3 console.`,
+      );
+    } else if (status === 301) {
+      console.error(
+        `❌ S3 bucket "${awsConfig.bucket}" is not in ${awsConfig.region}` +
+          (err.BucketRegion ? ` (it is in ${err.BucketRegion})` : "") +
+          ". Fix AWS_REGION in .env.",
+      );
+    } else if (status === 403) {
+      // A least-privilege policy may not allow HeadBucket; that is fine.
+      console.warn(`⚠️  S3 bucket "${awsConfig.bucket}" exists, but these credentials cannot verify it (403). Uploads may still work.`);
+    } else if (err.name === "InvalidAccessKeyId" || err.name === "SignatureDoesNotMatch") {
+      console.error("❌ AWS credentials are invalid. Check AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY in .env.");
+    } else {
+      console.warn(`⚠️  Could not verify S3 bucket: ${errorMessage(error)}`);
+    }
+  }
 };
 
 /** Best-effort delete that never throws (used for cleanup paths). */

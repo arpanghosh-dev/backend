@@ -1,0 +1,70 @@
+name: Deploy Backend to EC2
+
+on:
+  push:
+    branches: [main]
+
+env:
+  EC2_HOST: ${{ vars.EC2_HOST }}
+  EC2_USER: ${{ vars.EC2_USER }}
+  APP_PATH: ${{ vars.APP_PATH }}
+  PM2_APP_NAME: ${{ vars.PM2_APP_NAME }}
+  DEPLOY_BRANCH: ${{ vars.DEPLOY_BRANCH }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH Key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.EC2_SSH_KEY }}
+
+      - name: Deploy to EC2 via SSH
+        env:
+          NODE_ENV: ${{ vars.NODE_ENV }}
+          PORT: ${{ vars.PORT }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_BUCKET_NAME: ${{ secrets.AWS_BUCKET_NAME }}
+          STORAGE_LIMIT_GB: ${{ vars.STORAGE_LIMIT_GB }}
+          MAX_FILE_SIZE_MB: ${{ vars.MAX_FILE_SIZE_MB }}
+          UPLOAD_URL_EXPIRES_SECONDS: ${{ vars.UPLOAD_URL_EXPIRES_SECONDS }}
+          DOWNLOAD_URL_EXPIRES_SECONDS: ${{ vars.DOWNLOAD_URL_EXPIRES_SECONDS }}
+          CLEANUP_INTERVAL_MINUTES: ${{ vars.CLEANUP_INTERVAL_MINUTES }}
+          FRONTEND_URL: ${{ vars.FRONTEND_URL }}
+        run: |
+          ssh -o StrictHostKeyChecking=no "${EC2_USER}@${EC2_HOST}" <<EOF
+            set -e
+            cd "${APP_PATH}"
+            git checkout "${DEPLOY_BRANCH}"
+            git pull origin "${DEPLOY_BRANCH}"
+            npm install
+
+            cat > .env <<ENV
+            NODE_ENV=${NODE_ENV}
+            PORT=${PORT}
+            DATABASE_URL="${DATABASE_URL}"
+            AWS_REGION="${AWS_REGION}"
+            AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID}"
+            AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY}"
+            AWS_BUCKET_NAME="${AWS_BUCKET_NAME}"
+            STORAGE_LIMIT_GB=${STORAGE_LIMIT_GB}
+            MAX_FILE_SIZE_MB=${MAX_FILE_SIZE_MB}
+            UPLOAD_URL_EXPIRES_SECONDS=${UPLOAD_URL_EXPIRES_SECONDS}
+            DOWNLOAD_URL_EXPIRES_SECONDS=${DOWNLOAD_URL_EXPIRES_SECONDS}
+            CLEANUP_INTERVAL_MINUTES=${CLEANUP_INTERVAL_MINUTES}
+            FRONTEND_URL="${FRONTEND_URL}"
+            ENV
+
+            if pm2 show "${PM2_APP_NAME}" >/dev/null 2>&1; then
+              pm2 restart "${PM2_APP_NAME}"
+            else
+              pm2 start "npm run start" --name "${PM2_APP_NAME}"
+            fi
+          EOF
